@@ -1,6 +1,6 @@
 #include<stdint.h>
 #include<stdbool.h>
-#include<time.h>
+
 
  
 //R2D basic checklist
@@ -13,6 +13,7 @@
 #define ADC_MAX 4095
 #define BPPS_R2D_THRESHOLD 1025 // APPROX 25% PEDAL
 #define APPS_Deadband 205
+#define MAX_TORQUE_NM 29
 #define R2D_SOUND_time 1500
 
 static bool vehicle_is_r2d =false;
@@ -23,6 +24,8 @@ static long sound_start_time =0;
 //adc[1] APPS S1
 //adc[2] APPS S2
 //all passed in R2D update as uint16_t adc[3]
+bool r2d_is_active(void)     { return vehicle_is_r2d; }
+bool r2d_sound_active(void)  { return sound_active;   }
 
 
 // calling APPS_pedal_press function
@@ -30,15 +33,8 @@ extern float APPS_pedal_press(uint16_t adc1,uint16_t adc2,long current_time);
 extern bool r2d_apps_fault(void);
 extern void APPS_reset(void);
 
-//including time
-static long time(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
-}
-long now_time=time;
 
-uint32_t R2D_update(uint16_t adc[3],bool SDC_closed,bool starter_btn_released,bool now_time){
+float R2D_update(uint16_t adc[3],bool SDC_closed,bool starter_btn_released,long now_time){
    //shutdown circuit condition check
     if(!SDC_closed){
         vehicle_is_r2d=false;
@@ -49,7 +45,7 @@ uint32_t R2D_update(uint16_t adc[3],bool SDC_closed,bool starter_btn_released,bo
     }
     //Apps fault check
     float pedal = APPS_pedal_press(adc[1],adc[2],now_time);
-    if(r2d_apps_fault){
+    if(r2d_apps_fault()){
         vehicle_is_r2d=false;
         return 0;
     }
@@ -67,6 +63,13 @@ uint32_t R2D_update(uint16_t adc[3],bool SDC_closed,bool starter_btn_released,bo
     if(sound_active && now_time-sound_start_time>R2D_SOUND_time){
         sound_active=false;
     }
+    if(!vehicle_is_r2d){
+        return 0.0f;
+    }
+    if(adc[1]<APPS_Deadband){
+        return 0.0f;
+    }
+    float torque= pedal*(float)MAX_TORQUE_NM;
     return 0;
 }
 
@@ -76,6 +79,6 @@ void r2d_reset(void){
     sound_active=false;
     sound_start_time=0;
     starter_buton_pressed=false;
-    APPS_reset;
+    APPS_reset();
 }
 
